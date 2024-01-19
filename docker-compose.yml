@@ -1,36 +1,6 @@
 version: '3.7'
 
 services:
-    minio:
-        restart: always
-        image: minio/minio@sha256:2a42aa904e37061dcd09061008cbba5207e43d448418a4425da61c1d9b9cac4f
-        container_name: mlflow_s3
-        ports:
-            - "9000:9000"
-            - "9001:9001"
-        command: server /data --console-address ':9001' --address ':9000'
-        environment:
-            - MINIO_ROOT_USER=${AWS_ACCESS_KEY_ID}
-            - MINIO_ROOT_PASSWORD=${AWS_SECRET_ACCESS_KEY}
-        volumes:
-            - minio_data:/data
-        networks:
-            - web
-
-    mc:
-        image: minio/mc@sha256:07e52933eb44390d310b30112ca7c98541fa65aa7f1844533472000733062793
-        depends_on:
-            - minio
-        container_name: mc
-        env_file:
-            - .env
-        entrypoint: >
-            /bin/sh -c " /tmp/wait-for-it.sh minio:9000 && /usr/bin/mc alias set minio http://minio:9000 ${AWS_ACCESS_KEY_ID} ${AWS_SECRET_ACCESS_KEY} && /usr/bin/mc mb minio/mlflow; exit 0; "
-        volumes:
-            - ./wait-for-it.sh:/tmp/wait-for-it.sh
-        networks:
-            - web
-
     db:
         restart: always
         image: mysql/mysql-server@sha256:5b40d96b11333570143d98d3a74100fefadb9abb17b27a95dbc9ad33544ec142
@@ -61,19 +31,24 @@ services:
             - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
             - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
             - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-        command: mlflow server --backend-store-uri mysql+pymysql://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE} --default-artifact-root s3://mlflow/ --host 0.0.0.0
+        command: mlflow server --backend-store-uri mysql+pymysql://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE} --default-artifact-root /mlflow/artifacts --host 0.0.0.0
+
+        #command: mlflow server --backend-store-uri mysql+pymysql://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE} --default-artifact-root s3://mlflow/ --host 0.0.0.0
         labels:
             - "traefik.enable=true"
             - "traefik.http.routers.mlflow_server.rule=Host(`mlflow.preislers.de`)"
             - "traefik.http.routers.mlflow_server.entrypoints=websecure"
             - "traefik.http.routers.mlflow_server.tls.certresolver=letsencrypt"
             - "traefik.http.services.mlflow_server.loadbalancer.server.port=5000"
+        volumes:
+            - ./artifacts:/mlflow/artifacts
         networks:
             - web
 
 volumes:
     dbdata:
     minio_data:
+    artifacts:
 
 
 networks:
